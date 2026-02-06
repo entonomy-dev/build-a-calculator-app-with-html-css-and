@@ -1,306 +1,372 @@
-// Calculator Class
-class Calculator {
-    constructor(previousOperandElement, currentOperandElement) {
-        this.previousOperandElement = previousOperandElement;
-        this.currentOperandElement = currentOperandElement;
-        this.clear();
+// Snake Game Configuration
+const CONFIG = {
+    gridSize: 20,
+    tileSize: 20,
+    initialSpeed: 150,
+    speedIncrease: 5,
+    minSpeed: 60
+};
+
+// Game State
+class SnakeGame {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.scoreElement = document.getElementById('score');
+        this.highScoreElement = document.getElementById('highScore');
+        this.gameStatusElement = document.getElementById('gameStatus');
+
+        // Game state
+        this.snake = [{ x: 10, y: 10 }];
+        this.direction = { x: 1, y: 0 };
+        this.nextDirection = { x: 1, y: 0 };
+        this.food = this.generateFood();
+        this.score = 0;
+        this.highScore = this.loadHighScore();
+        this.gameRunning = false;
+        this.gamePaused = false;
+        this.gameOver = false;
+        this.speed = CONFIG.initialSpeed;
+        this.lastRenderTime = 0;
+
+        this.init();
     }
 
-    clear() {
-        this.currentOperand = '0';
-        this.previousOperand = '';
-        this.operation = undefined;
-        this.shouldResetScreen = false;
+    init() {
+        this.updateHighScoreDisplay();
+        this.setupEventListeners();
+        this.draw();
     }
 
-    delete() {
-        if (this.currentOperand === '0') return;
-        if (this.currentOperand.length === 1) {
-            this.currentOperand = '0';
-        } else {
-            this.currentOperand = this.currentOperand.slice(0, -1);
-        }
+    setupEventListeners() {
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => this.handleKeyPress(e));
+
+        // Button controls
+        document.getElementById('startBtn').addEventListener('click', () => this.start());
+        document.getElementById('pauseBtn').addEventListener('click', () => this.togglePause());
+        document.getElementById('upBtn').addEventListener('click', () => this.changeDirection({ x: 0, y: -1 }));
+        document.getElementById('downBtn').addEventListener('click', () => this.changeDirection({ x: 0, y: 1 }));
+        document.getElementById('leftBtn').addEventListener('click', () => this.changeDirection({ x: -1, y: 0 }));
+        document.getElementById('rightBtn').addEventListener('click', () => this.changeDirection({ x: 1, y: 0 }));
     }
 
-    appendNumber(number) {
-        // If we should reset screen (after operation), replace current operand
-        if (this.shouldResetScreen) {
-            this.currentOperand = '';
-            this.shouldResetScreen = false;
-        }
-
-        // If current operand is 0, replace it (unless adding decimal point)
-        if (this.currentOperand === '0' && number !== '.') {
-            this.currentOperand = number;
+    handleKeyPress(e) {
+        if (e.code === 'Space') {
+            e.preventDefault();
+            if (!this.gameRunning) {
+                this.start();
+            } else {
+                this.togglePause();
+            }
             return;
         }
 
-        // Prevent multiple decimal points
-        if (number === '.' && this.currentOperand.includes('.')) return;
-
-        // Limit length to prevent overflow
-        if (this.currentOperand.length >= 15) return;
-
-        this.currentOperand += number;
-    }
-
-    chooseOperation(operation) {
-        // If there's no current operand (or it's empty), can't choose operation
-        if (this.currentOperand === '') return;
-
-        // If there's a previous operand, calculate first
-        if (this.previousOperand !== '') {
-            this.calculate();
+        if (e.code === 'Escape') {
+            e.preventDefault();
+            this.reset();
+            return;
         }
 
-        this.operation = operation;
-        this.previousOperand = this.currentOperand;
-        this.shouldResetScreen = true;
+        // Arrow keys
+        const keyDirections = {
+            'ArrowUp': { x: 0, y: -1 },
+            'ArrowDown': { x: 0, y: 1 },
+            'ArrowLeft': { x: -1, y: 0 },
+            'ArrowRight': { x: 1, y: 0 }
+        };
+
+        if (keyDirections[e.code]) {
+            e.preventDefault();
+            this.changeDirection(keyDirections[e.code]);
+        }
     }
 
-    calculate() {
-        let computation;
-        const prev = parseFloat(this.previousOperand);
-        const current = parseFloat(this.currentOperand);
-
-        // If either value is NaN, can't compute
-        if (isNaN(prev) || isNaN(current)) return;
-
-        switch (this.operation) {
-            case '+':
-                computation = prev + current;
-                break;
-            case '-':
-                computation = prev - current;
-                break;
-            case '*':
-                computation = prev * current;
-                break;
-            case '/':
-                if (current === 0) {
-                    this.showError();
-                    return;
-                }
-                computation = prev / current;
-                break;
-            default:
-                return;
+    changeDirection(newDirection) {
+        // Prevent reversing direction
+        if (this.direction.x === -newDirection.x && this.direction.y === -newDirection.y) {
+            return;
         }
 
-        // Round to prevent floating point errors
-        computation = Math.round(computation * 100000000) / 100000000;
-
-        this.currentOperand = computation.toString();
-        this.operation = undefined;
-        this.previousOperand = '';
-        this.shouldResetScreen = true;
+        this.nextDirection = newDirection;
     }
 
-    percentage() {
-        const current = parseFloat(this.currentOperand);
-        if (isNaN(current)) return;
-        this.currentOperand = (current / 100).toString();
+    start() {
+        if (this.gameOver) {
+            this.reset();
+        }
+
+        this.gameRunning = true;
+        this.gamePaused = false;
+        this.updateUI();
+        this.gameLoop();
     }
 
-    showError() {
-        this.currentOperand = 'Error';
-        this.previousOperand = '';
-        this.operation = undefined;
-        this.currentOperandElement.classList.add('error');
+    togglePause() {
+        if (!this.gameRunning || this.gameOver) return;
 
-        setTimeout(() => {
-            this.clear();
-            this.updateDisplay();
-            this.currentOperandElement.classList.remove('error');
-        }, 1500);
+        this.gamePaused = !this.gamePaused;
+        this.updateUI();
+
+        if (!this.gamePaused) {
+            this.gameLoop();
+        }
     }
 
-    getDisplayNumber(number) {
-        const stringNumber = number.toString();
-        const integerDigits = parseFloat(stringNumber.split('.')[0]);
-        const decimalDigits = stringNumber.split('.')[1];
-        let integerDisplay;
+    reset() {
+        this.snake = [{ x: 10, y: 10 }];
+        this.direction = { x: 1, y: 0 };
+        this.nextDirection = { x: 1, y: 0 };
+        this.food = this.generateFood();
+        this.score = 0;
+        this.gameRunning = false;
+        this.gamePaused = false;
+        this.gameOver = false;
+        this.speed = CONFIG.initialSpeed;
+        this.updateScore();
+        this.updateUI();
+        this.draw();
+    }
 
-        if (isNaN(integerDigits)) {
-            integerDisplay = '';
+    gameLoop(currentTime = 0) {
+        if (!this.gameRunning || this.gamePaused || this.gameOver) return;
+
+        const timeSinceLastRender = currentTime - this.lastRenderTime;
+
+        if (timeSinceLastRender >= this.speed) {
+            this.lastRenderTime = currentTime;
+            this.update();
+            this.draw();
+        }
+
+        requestAnimationFrame((time) => this.gameLoop(time));
+    }
+
+    update() {
+        // Update direction
+        this.direction = { ...this.nextDirection };
+
+        // Calculate new head position
+        const head = { ...this.snake[0] };
+        head.x += this.direction.x;
+        head.y += this.direction.y;
+
+        // Check wall collision
+        if (head.x < 0 || head.x >= CONFIG.gridSize || head.y < 0 || head.y >= CONFIG.gridSize) {
+            this.endGame();
+            return;
+        }
+
+        // Check self collision
+        if (this.snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+            this.endGame();
+            return;
+        }
+
+        // Add new head
+        this.snake.unshift(head);
+
+        // Check food collision
+        if (head.x === this.food.x && head.y === this.food.y) {
+            this.score += 10;
+            this.updateScore();
+            this.food = this.generateFood();
+
+            // Increase speed
+            if (this.speed > CONFIG.minSpeed) {
+                this.speed = Math.max(CONFIG.minSpeed, this.speed - CONFIG.speedIncrease);
+            }
         } else {
-            integerDisplay = integerDigits.toLocaleString('en', {
-                maximumFractionDigits: 0
-            });
-        }
-
-        if (decimalDigits != null) {
-            return `${integerDisplay}.${decimalDigits}`;
-        } else {
-            return integerDisplay;
+            // Remove tail if no food eaten
+            this.snake.pop();
         }
     }
 
-    updateDisplay() {
-        // Add animation class
-        this.currentOperandElement.classList.add('display-update');
-        setTimeout(() => {
-            this.currentOperandElement.classList.remove('display-update');
-        }, 100);
+    generateFood() {
+        let newFood;
+        let foodOnSnake;
 
-        // Update current operand
-        if (this.currentOperand === 'Error') {
-            this.currentOperandElement.textContent = this.currentOperand;
-        } else {
-            this.currentOperandElement.textContent = this.getDisplayNumber(this.currentOperand);
+        do {
+            newFood = {
+                x: Math.floor(Math.random() * CONFIG.gridSize),
+                y: Math.floor(Math.random() * CONFIG.gridSize)
+            };
+
+            foodOnSnake = this.snake.some(segment =>
+                segment.x === newFood.x && segment.y === newFood.y
+            );
+        } while (foodOnSnake);
+
+        return newFood;
+    }
+
+    draw() {
+        // Clear canvas with red background
+        this.ctx.fillStyle = '#4d0000';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Draw grid lines (subtle red)
+        this.ctx.strokeStyle = '#660000';
+        this.ctx.lineWidth = 1;
+
+        for (let i = 0; i <= CONFIG.gridSize; i++) {
+            // Vertical lines
+            this.ctx.beginPath();
+            this.ctx.moveTo(i * CONFIG.tileSize, 0);
+            this.ctx.lineTo(i * CONFIG.tileSize, this.canvas.height);
+            this.ctx.stroke();
+
+            // Horizontal lines
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, i * CONFIG.tileSize);
+            this.ctx.lineTo(this.canvas.width, i * CONFIG.tileSize);
+            this.ctx.stroke();
         }
 
-        // Update previous operand with operation
-        if (this.operation != null) {
-            const operatorSymbol = this.getOperatorSymbol(this.operation);
-            this.previousOperandElement.textContent =
-                `${this.getDisplayNumber(this.previousOperand)} ${operatorSymbol}`;
-        } else {
-            this.previousOperandElement.textContent = '';
+        // Draw food (bright red with glow)
+        this.ctx.fillStyle = '#ff0000';
+        this.ctx.shadowBlur = 15;
+        this.ctx.shadowColor = '#ff0000';
+        this.ctx.fillRect(
+            this.food.x * CONFIG.tileSize + 2,
+            this.food.y * CONFIG.tileSize + 2,
+            CONFIG.tileSize - 4,
+            CONFIG.tileSize - 4
+        );
+
+        // Reset shadow
+        this.ctx.shadowBlur = 0;
+
+        // Draw snake (gradient red)
+        this.snake.forEach((segment, index) => {
+            const isHead = index === 0;
+
+            if (isHead) {
+                // Snake head - brightest red
+                this.ctx.fillStyle = '#ff3333';
+                this.ctx.shadowBlur = 10;
+                this.ctx.shadowColor = '#ff0000';
+            } else {
+                // Snake body - darker red gradient
+                const opacity = 1 - (index / this.snake.length) * 0.4;
+                this.ctx.fillStyle = `rgba(200, 0, 0, ${opacity})`;
+                this.ctx.shadowBlur = 5;
+                this.ctx.shadowColor = '#8b0000';
+            }
+
+            this.ctx.fillRect(
+                segment.x * CONFIG.tileSize + 1,
+                segment.y * CONFIG.tileSize + 1,
+                CONFIG.tileSize - 2,
+                CONFIG.tileSize - 2
+            );
+
+            // Draw eyes on head
+            if (isHead) {
+                this.ctx.fillStyle = '#660000';
+                this.ctx.shadowBlur = 0;
+
+                const eyeSize = 3;
+                const eyeOffsetX = 6;
+                const eyeOffsetY = 6;
+
+                // Left eye
+                this.ctx.fillRect(
+                    segment.x * CONFIG.tileSize + eyeOffsetX,
+                    segment.y * CONFIG.tileSize + eyeOffsetY,
+                    eyeSize,
+                    eyeSize
+                );
+
+                // Right eye
+                this.ctx.fillRect(
+                    segment.x * CONFIG.tileSize + CONFIG.tileSize - eyeOffsetX - eyeSize,
+                    segment.y * CONFIG.tileSize + eyeOffsetY,
+                    eyeSize,
+                    eyeSize
+                );
+            }
+        });
+
+        // Reset shadow
+        this.ctx.shadowBlur = 0;
+    }
+
+    updateScore() {
+        this.scoreElement.textContent = this.score;
+
+        if (this.score > this.highScore) {
+            this.highScore = this.score;
+            this.saveHighScore();
+            this.updateHighScoreDisplay();
+            this.highScoreElement.classList.add('high-score-beat');
+            setTimeout(() => {
+                this.highScoreElement.classList.remove('high-score-beat');
+            }, 500);
         }
     }
 
-    getOperatorSymbol(operation) {
-        switch (operation) {
-            case '+': return '+';
-            case '-': return '−';
-            case '*': return '×';
-            case '/': return '÷';
-            default: return '';
+    updateHighScoreDisplay() {
+        this.highScoreElement.textContent = this.highScore;
+    }
+
+    updateUI() {
+        const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+
+        if (this.gameOver) {
+            this.gameStatusElement.textContent = 'GAME OVER! Press SPACE to restart';
+            this.gameStatusElement.classList.add('game-over');
+            startBtn.style.display = 'inline-block';
+            startBtn.textContent = 'RESTART';
+            pauseBtn.style.display = 'none';
+        } else if (this.gamePaused) {
+            this.gameStatusElement.textContent = 'PAUSED - Press SPACE to continue';
+            this.gameStatusElement.classList.remove('game-over');
+            startBtn.style.display = 'none';
+            pauseBtn.style.display = 'inline-block';
+            pauseBtn.textContent = 'RESUME';
+        } else if (this.gameRunning) {
+            this.gameStatusElement.textContent = 'Playing... Use Arrow Keys to move!';
+            this.gameStatusElement.classList.remove('game-over');
+            startBtn.style.display = 'none';
+            pauseBtn.style.display = 'inline-block';
+            pauseBtn.textContent = 'PAUSE';
+        } else {
+            this.gameStatusElement.textContent = 'Press SPACE or click START to begin';
+            this.gameStatusElement.classList.remove('game-over');
+            startBtn.style.display = 'inline-block';
+            startBtn.textContent = 'START';
+            pauseBtn.style.display = 'none';
         }
+    }
+
+    endGame() {
+        this.gameRunning = false;
+        this.gameOver = true;
+        this.updateUI();
+        this.draw();
+    }
+
+    loadHighScore() {
+        const saved = localStorage.getItem('redSnakeHighScore');
+        return saved ? parseInt(saved) : 0;
+    }
+
+    saveHighScore() {
+        localStorage.setItem('redSnakeHighScore', this.highScore.toString());
     }
 }
 
-// Initialize Calculator
-const previousOperandElement = document.getElementById('previousOperand');
-const currentOperandElement = document.getElementById('currentOperand');
-const calculator = new Calculator(previousOperandElement, currentOperandElement);
-
-// Event Listeners for Number Buttons
-const numberButtons = document.querySelectorAll('[data-number]');
-numberButtons.forEach(button => {
-    button.addEventListener('click', () => {
-        calculator.appendNumber(button.dataset.number);
-        calculator.updateDisplay();
-    });
+// Initialize game when page loads
+let game;
+window.addEventListener('DOMContentLoaded', () => {
+    game = new SnakeGame();
 });
 
-// Event Listeners for Operator Buttons
-const operatorButtons = document.querySelectorAll('[data-operator]');
-operatorButtons.forEach(button => {
-    button.addEventListener('click', () => {
-        calculator.chooseOperation(button.dataset.operator);
-        calculator.updateDisplay();
-
-        // Visual feedback for active operator
-        operatorButtons.forEach(btn => btn.classList.remove('active'));
-        button.classList.add('active');
-    });
-});
-
-// Event Listener for Equals Button
-const equalsButton = document.querySelector('[data-action="equals"]');
-equalsButton.addEventListener('click', () => {
-    calculator.calculate();
-    calculator.updateDisplay();
-
-    // Remove active state from operators
-    operatorButtons.forEach(btn => btn.classList.remove('active'));
-});
-
-// Event Listener for Clear Button
-const clearButton = document.querySelector('[data-action="clear"]');
-clearButton.addEventListener('click', () => {
-    calculator.clear();
-    calculator.updateDisplay();
-
-    // Remove active state from operators
-    operatorButtons.forEach(btn => btn.classList.remove('active'));
-});
-
-// Event Listener for Delete Button
-const deleteButton = document.querySelector('[data-action="delete"]');
-deleteButton.addEventListener('click', () => {
-    calculator.delete();
-    calculator.updateDisplay();
-});
-
-// Event Listener for Percent Button
-const percentButton = document.querySelector('[data-action="percent"]');
-percentButton.addEventListener('click', () => {
-    calculator.percentage();
-    calculator.updateDisplay();
-});
-
-// Keyboard Support
-document.addEventListener('keydown', (e) => {
-    // Numbers
-    if ((e.key >= '0' && e.key <= '9') || e.key === '.') {
-        calculator.appendNumber(e.key);
-        calculator.updateDisplay();
-    }
-
-    // Operators
-    if (e.key === '+' || e.key === '-' || e.key === '*' || e.key === '/') {
-        calculator.chooseOperation(e.key);
-        calculator.updateDisplay();
-
-        // Visual feedback
-        const operatorButton = document.querySelector(`[data-operator="${e.key}"]`);
-        if (operatorButton) {
-            operatorButtons.forEach(btn => btn.classList.remove('active'));
-            operatorButton.classList.add('active');
-        }
-    }
-
-    // Enter/Equals
-    if (e.key === 'Enter' || e.key === '=') {
+// Prevent scrolling with arrow keys
+window.addEventListener('keydown', (e) => {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
         e.preventDefault();
-        calculator.calculate();
-        calculator.updateDisplay();
-        operatorButtons.forEach(btn => btn.classList.remove('active'));
     }
-
-    // Backspace/Delete
-    if (e.key === 'Backspace') {
-        e.preventDefault();
-        calculator.delete();
-        calculator.updateDisplay();
-    }
-
-    // Escape/Clear
-    if (e.key === 'Escape') {
-        calculator.clear();
-        calculator.updateDisplay();
-        operatorButtons.forEach(btn => btn.classList.remove('active'));
-    }
-
-    // Percent
-    if (e.key === '%') {
-        calculator.percentage();
-        calculator.updateDisplay();
-    }
-});
-
-// Initial Display Update
-calculator.updateDisplay();
-
-// Add button press animation feedback
-document.querySelectorAll('.btn').forEach(button => {
-    button.addEventListener('mousedown', function() {
-        this.style.transform = 'scale(0.95)';
-    });
-
-    button.addEventListener('mouseup', function() {
-        this.style.transform = '';
-    });
-
-    button.addEventListener('mouseleave', function() {
-        this.style.transform = '';
-    });
-});
-
-// Prevent context menu on calculator
-document.querySelector('.calculator').addEventListener('contextmenu', (e) => {
-    e.preventDefault();
 });
