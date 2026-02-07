@@ -60,14 +60,20 @@ calculator-app/
 ├── index.html          # Main HTML structure
 ├── styles.css          # Complete styling and animations
 ├── script.js           # Calculator logic and event handlers
+├── Dockerfile          # Docker configuration for containerization
+├── .dockerignore       # Docker build exclusions
+├── .gitignore          # Git exclusions
 └── README.md          # Documentation
 ```
 
 ## Usage
 
+### Method 1: Direct Browser Access
+
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/calculator-app.git
+   git clone https://github.com/entonomy-dev/build-a-calculator-app-with-html-css-and.git
+   cd build-a-calculator-app-with-html-css-and
    ```
 
 2. **Open in browser**
@@ -77,6 +83,43 @@ calculator-app/
 3. **Start calculating**
    - Click buttons or use keyboard to perform calculations
    - Results are displayed in real-time
+
+### Method 2: Docker Deployment
+
+This calculator app is containerized and ready for deployment using Docker.
+
+1. **Build the Docker image**
+   ```bash
+   docker build -t calculator-app .
+   ```
+
+2. **Run the container**
+   ```bash
+   docker run -d -p 8080:80 --name calculator calculator-app
+   ```
+
+3. **Access the application**
+   - Open your browser and navigate to `http://localhost:8080`
+   - The calculator will be served via nginx
+
+4. **Stop the container**
+   ```bash
+   docker stop calculator
+   ```
+
+5. **Remove the container**
+   ```bash
+   docker rm calculator
+   ```
+
+**Docker Hub Deployment** (optional)
+   ```bash
+   # Tag the image
+   docker tag calculator-app yourusername/calculator-app:latest
+
+   # Push to Docker Hub
+   docker push yourusername/calculator-app:latest
+   ```
 
 ## How It Works
 
